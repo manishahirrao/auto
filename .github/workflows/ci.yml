@@ -1,16 +1,17 @@
-name: Selenium Test Pipeline - Updated for Ubuntu 24.04
+name: Selenium Test Pipeline - Enhanced Debugging
 
 on:
   push:
     branches: ["main"]
   pull_request:
     branches: ["main"]
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch:
 
 jobs:
   test:
     name: Run Selenium Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
     - name: Checkout code
@@ -20,11 +21,12 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: "3.10"
+        cache: 'pip'
 
     - name: Install system dependencies
       run: |
-        sudo apt-get update
-        sudo apt-get install -y wget unzip xvfb libxi6
+        sudo apt-get update -y
+        sudo apt-get install -y wget unzip xvfb libxi6 libxss1 libnss3 libasound2 libgbm1
         
     - name: Install Chrome
       run: |
@@ -36,28 +38,42 @@ jobs:
     - name: Install ChromeDriver
       run: |
         CHROME_VERSION=$(google-chrome --version | awk '{print $3}')
+        echo "Chrome version: $CHROME_VERSION"
         CHROME_MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d. -f1)
+        echo "Chrome major version: $CHROME_MAJOR_VERSION"
         CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_MAJOR_VERSION")
+        echo "ChromeDriver version: $CHROMEDRIVER_VERSION"
         wget -q "https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip"
         unzip -q chromedriver_linux64.zip
         sudo mv chromedriver /usr/local/bin/chromedriver
         sudo chmod +x /usr/local/bin/chromedriver
 
-    - name: Show versions
+    - name: Debug environment
       run: |
-        google-chrome --version
-        chromedriver --version
-        python --version
+        echo "=== Environment Debug Information ==="
+        echo "Python: $(python --version)"
+        echo "Pip: $(pip --version)"
+        echo "Chrome: $(google-chrome --version)"
+        echo "ChromeDriver: $(chromedriver --version)"
+        echo "Display: $DISPLAY"
+        echo "Current directory: $(pwd)"
+        echo "Files in current directory:"
+        ls -la
+        echo "Files in src/tests/:"
+        ls -la src/tests/
+        echo "==================================="
 
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip list
 
     - name: Create reports and screenshots directories
       run: |
         mkdir -p reports
         mkdir -p screenshots
+        chmod -R 777 reports screenshots
 
     - name: Run Selenium tests
       env:
@@ -65,16 +81,37 @@ jobs:
         VALID_USERNAME: ${{ secrets.VALID_USERNAME || 'standard_user' }}
         VALID_PASSWORD: ${{ secrets.VALID_PASSWORD || 'secret_sauce' }}
         LOCKED_USER: ${{ secrets.LOCKED_USER || 'locked_out_user' }}
+        PYTHONUNBUFFERED: 1
       run: |
-        # Set display for headless mode
-        export DISPLAY=:99
+        # Start Xvfb in the background
         Xvfb :99 -screen 0 1920x1080x16 &
+        export DISPLAY=:99
         
-        # Run tests with HTML report
+        # Wait for Xvfb to start
+        sleep 5
+        
+        # Run tests with detailed output
+        set -x  # Enable debug output
         python -m pytest src/tests/test_login_logout.py -v \
+          --maxfail=1 \
+          --disable-warnings \
           --html=reports/report.html \
           --self-contained-html \
-          --junitxml=reports/junit.xml
+          --junitxml=reports/junit.xml \
+          --show-capture=all \
+          -rA \
+          --log-cli-level=INFO
+        
+        # Capture the exit code
+        TEST_EXIT_CODE=$?
+        
+        # List generated files
+        echo "Generated files:"
+        find reports -type f
+        find screenshots -type f 2>/dev/null || echo "No screenshots found"
+        
+        # Exit with the test's exit code
+        exit $TEST_EXIT_CODE
 
     - name: Upload test results
       if: always()
@@ -82,7 +119,7 @@ jobs:
       with:
         name: test-results
         path: |
-          reports/*.html
-          reports/*.xml
-          screenshots/*.png
+          reports/
+          screenshots/
         if-no-files-found: warn
+        retention-days: 5
