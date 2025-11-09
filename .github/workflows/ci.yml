@@ -1,4 +1,4 @@
-name: Selenium Test Pipeline
+name: Selenium Test Pipeline - Updated for Ubuntu 24.04
 
 on:
   push:
