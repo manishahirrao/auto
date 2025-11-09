@@ -1,0 +1,5 @@
+selenium>=4.10
+pytest>=7.0
+pytest-html>=3.2
+pytest-xdist>=3.0
+python-dotenv>=1.0
