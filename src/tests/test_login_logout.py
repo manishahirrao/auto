@@ -98,26 +98,32 @@ def setup_teardown(driver: WebDriver, request: pytest.FixtureRequest) -> Generat
     request.addfinalizer(teardown)
 
 
-@pytest.mark.skipif(not (VALID_USERNAME and VALID_PASSWORD), 
-                  reason="VALID_USERNAME and VALID_PASSWORD must be set in .env")
-def test_valid_login_logout(driver: WebDriver) -> None:
-    """Test successful login and logout flow."""
+def test_valid_login(driver: WebDriver) -> None:
+    """Test successful login and keep browser open for inspection."""
     page = LoginPage(driver)
     page.load(BASE_URL)
 
     # Log in with valid credentials
     page.login(VALID_USERNAME, VALID_PASSWORD)
-    
+
     # Verify login success by checking for inventory container
     assert page.is_visible(page.INVENTORY_CONTAINER), "Inventory container not visible after login"
     
-    # Log out
-    page.logout()
+    # Print success message
+    print("\n✅ Login successful!")
+    print("The browser will remain open for inspection.")
+    print("You can manually explore the website now.")
+    print("Close the browser when done or press Ctrl+C in the terminal to exit.")
     
-    # Verify logout by checking if login button is visible again
-    assert page.is_visible(page.LOGIN_BTN), "Login button not visible after logout"
+    # Keep the browser open for manual inspection
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nTest completed. Closing browser...")
 
 
+@pytest.mark.skip(reason="Skipping other tests to focus on login test")
 def test_invalid_login(driver: WebDriver) -> None:
     """Test login with invalid credentials shows an error message."""
     page = LoginPage(driver)

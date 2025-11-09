@@ -8,6 +8,7 @@ from __future__ import annotations
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
+import time
 from selenium.webdriver.support.ui import WebDriverWait
 
 from .base_page import BasePage, Locator
@@ -88,24 +89,48 @@ class LoginPage(BasePage):
     def get_error(self) -> str:
         return self.get_text(self.ERROR_MSG)
 
-    def logout(self) -> None:
-        try:
-            # Wait for the menu button to be clickable
-            menu_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable(self.MENU_BUTTON)
-            )
-            menu_button.click()
+    def logout(self, max_retries: int = 3) -> None:
+        """Log out from the application with retry mechanism.
+        
+        Args:
+            max_retries: Maximum number of retry attempts
             
-            # Wait for the logout button to be clickable and click it
-            logout_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable(self.LOGOUT_BUTTON)
-            )
-            logout_button.click()
-            
-            # Wait until we're back at the login page
-            WebDriverWait(self.driver, 10).until(
-                EC.visibility_of_element_located(self.USERNAME)
-            )
-        except Exception as e:
-            self.take_screenshot("logout_error")
-            raise Exception(f"Logout failed: {str(e)}")
+        Raises:
+            Exception: If logout fails after all retry attempts
+        """
+        for attempt in range(max_retries):
+            try:
+                # Wait for the menu button with a fresh find
+                menu_button = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable(self.MENU_BUTTON)
+                )
+                
+                # Scroll into view and click with JavaScript
+                self.driver.execute_script("arguments[0].scrollIntoView(true);", menu_button)
+                self.driver.execute_script("arguments[0].click();", menu_button)
+                
+                # Wait for the logout button with a fresh find
+                WebDriverWait(self.driver, 10).until(
+                    EC.visibility_of_element_located(self.LOGOUT_BUTTON)
+                )
+                
+                # Find and click logout button with JavaScript
+                logout_button = self.driver.find_element(*self.LOGOUT_BUTTON)
+                self.driver.execute_script("arguments[0].click();", logout_button)
+        
+                # Wait for the login page to load
+                WebDriverWait(self.driver, 10).until(
+                    lambda d: d.find_element(*self.USERNAME).is_displayed()
+                )
+                
+                # If we got here, logout was successful
+                return
+                
+            except Exception as e:
+                if attempt == max_retries - 1:  # Last attempt
+                    self.take_screenshot("logout_error")
+                    raise Exception(f"Logout failed after {max_retries} attempts: {str(e)}")
+                
+                # Wait a bit before retrying
+                time.sleep(1)
+                print(f"Retry {attempt + 1}/{max_retries} - Retrying logout...")
